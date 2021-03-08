@@ -1,0 +1,26 @@
+certifi==2020.6.20
+cloudpickle==1.6.0
+cycler==0.10.0
+ffmpeg==1.4
+flake8==3.8.4
+future==0.18.2
+gym==0.18.0
+joblib==1.0.1
+kiwisolver==1.2.0
+matplotlib==3.3.2
+mccabe==0.6.1
+mkl-fft==1.2.0
+mkl-random==1.1.1
+mkl-service==2.3.0
+numpy @ file:///tmp/build/80754af9/numpy_and_numpy_base_1596233721170/work
+Pillow==7.2.0
+pycodestyle==2.6.0
+pyflakes==2.2.0
+pyglet==1.5.0
+pyparsing==2.4.7
+python-dateutil==2.8.1
+rope==0.18.0
+scikit-learn==0.24.1
+scipy==1.6.0
+six==1.15.0
+threadpoolctl==2.1.0
