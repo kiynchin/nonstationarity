@@ -13,6 +13,8 @@ class Dynamics:
         self.l = l
         self.b = b
         self.dt = dt
+        self.schedule = Dynamics.oscillating([0.25, 0.75])
+        self.schedule = Dynamics.asymptotic(0)
 
     def __call__(self, x:PendulumPhase, u):
         m = self.m
@@ -24,33 +26,45 @@ class Dynamics:
         theta_dot_new = x['theta_dot'] + alpha*self.dt
         return np.array((theta_new, theta_dot_new), dtype=PendulumPhase)
 
+    def asymptotic(init):
+        max_b = 2
+        value = init
+        assert(value<max_b)
+        while True:
+            value = 0.1*max_b+0.9*value
+            yield value
+
+    def oscillating(values):
+        while True:
+            for value in values:
+                yield value
+
     def update(self):
-        self.b = random.random()
+        self.b = next(self.schedule)
 
 
-def plot_comparison(field: str):
-    plt.figure()
-    plt.plot(np.linspace(0, T, N), traj[field], c='k')
-    plt.scatter(np.linspace(0, T, N), predicted_traj[field], c='b')
+
+def plot_comparison(field: str, axs):
+    ax0 = axs[0]
+    ax0.plot(np.linspace(0, T, N), traj[field], c='k')
+    ax0.scatter(np.linspace(0, T, N), predicted_traj[field], c='b')
     for i in range(1, num_dynamics_epochs):
-        plt.axvline(T*i/num_dynamics_epochs)
+        ax0.axvline(T*i/num_dynamics_epochs)
 
-    plt.xlabel("Time (s)")
-    plt.ylabel(field)
-    plt.legend(["Ground Truth", "Model Prediction"])
-    plt.title(f"Tracking performance of {field}")
-    plt.show()
+    ax0.set_xlabel("Time (s)")
+    ax0.set_ylabel(field)
+    ax0.legend(["Ground Truth", "Model Prediction"])
+    ax0.set_title(f"Tracking performance of {field}")
 
-    plt.figure()
-    plt.plot(np.linspace(0, T, N), np.abs(error_traj[field]), c='r')
+    ax1 = axs[1]
+    ax1.plot(np.linspace(0, T, N), np.abs(error_traj[field]), c='r')
     for i in range(1, num_dynamics_epochs):
-        plt.axvline(T*i/num_dynamics_epochs)
-    plt.xlabel("Time (s)")
-    plt.ylabel("Prediction % Error")
-    plt.title(f"Error in {field} vs. Dynamics Changes")
-    plt.legend(["Error", "Dynamics Shift"])
-    plt.ylim((0,100))
-    plt.show()
+        ax1.axvline(T*i/num_dynamics_epochs)
+    ax1.set_xlabel("Time (s)")
+    ax1.set_ylabel("Prediction % Error")
+    ax1.set_title(f"Error in {field} vs. Dynamics Changes")
+    ax1.legend(["Error", "Dynamics Shift"])
+    ax1.set_ylim((0,100))
 
 
 
@@ -68,7 +82,7 @@ if __name__ == "__main__":
 
     N = int(T/dt)
 
-    u_scale = 5
+    u_scale = 0
     u_traj = [u_scale*random.random()-0.5 for i in range(N)]
     u = u_traj[0]
     theta_0 = np.pi/2
@@ -87,7 +101,7 @@ if __name__ == "__main__":
 
     error_traj = np.empty((N,), dtype=PendulumPhase)
     error_traj[0], error_traj[1] = (None, None)
-    num_dynamics_epochs = 50
+    num_dynamics_epochs = 10
     num_control_epochs = num_dynamics_epochs*10
 
     control_epoch_length = int(N/num_control_epochs)
@@ -112,7 +126,10 @@ if __name__ == "__main__":
         model_learner.partial_fit(X=np.array([x['theta'], x['theta_dot'], u]).reshape(1, -1),
                                    y=np.array([xnew_actual['theta'], xnew_actual['theta_dot']]).reshape(1, -1))
         x = xnew_actual
-    plot_comparison('theta')
-    plot_comparison('theta_dot')
+
+    fig, axs = plt.subplots(2,2)
+    plot_comparison('theta', [axs[0,0], axs[0,1]])
+    plot_comparison('theta_dot', [axs[1,0], axs[1,1]])
+    plt.show()
 
 
