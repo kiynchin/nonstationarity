@@ -62,6 +62,7 @@ if __name__ == "__main__":
     dt = 0.01
     dyn = Dynamics(m=5, g=9.81, l=2, b=0.5, dt=dt)
     T = 15
+    rate = 0.001
 
 
     N = int(T/dt)
@@ -76,8 +77,7 @@ if __name__ == "__main__":
     traj[0] = x0
     x1 = dyn(x0, u_traj[0])
     traj[1] = x1
-    
-    model_learner = MLPRegressor(random_state=1, max_iter=500)
+    model_learner = MLPRegressor(random_state=1, learning_rate='constant', solver='sgd', learning_rate_init=rate, max_iter=500)
     predicted_traj = np.empty((N,), dtype=PendulumPhase)
     predicted_traj[0] = None
     predicted_traj[1] = None
@@ -99,7 +99,7 @@ if __name__ == "__main__":
 
         if i % dynamics_epoch_length == 0:
             dyn.update()
-            
+
         xnew_actual = dyn(x, u)
         traj[i] = xnew_actual
         xnew_predicted = model_learner.predict(np.array([x['theta'], x['theta_dot'], u]).reshape(1, -1))
@@ -111,9 +111,7 @@ if __name__ == "__main__":
         model_learner.partial_fit(X=np.array([x['theta'], x['theta_dot'], u]).reshape(1, -1),
                                    y=np.array([xnew_actual['theta'], xnew_actual['theta_dot']]).reshape(1, -1))
         x = xnew_actual
-    
     plot_comparison('theta')
     plot_comparison('theta_dot')
-        
 
 
