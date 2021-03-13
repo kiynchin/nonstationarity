@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random
 from sklearn.neural_network import MLPRegressor
+import sys
 
 PendulumPhase = np.dtype([('theta', 'f8'), ('theta_dot', 'f8')])
 
@@ -14,7 +15,7 @@ class Dynamics:
         self.b = b
         self.dt = dt
         self.schedule = Dynamics.oscillating([0.25, 0.75])
-        self.schedule = Dynamics.asymptotic(0)
+        self.schedule = Dynamics.asymptotic(1.5)
 
     def __call__(self, x:PendulumPhase, u):
         m = self.m
@@ -73,44 +74,64 @@ class ModelLearner:
         pass
 
 
+class Controller:
+    def __init__(self, u_scale, policy):
+        self.u_scale = u_scale
+        self.policy = policy(self.u_scale)
+        next(self.policy)
+
+    def __call__(self, state):
+        self.policy.send(state)
+        return next(self.policy)
+
+
+    def random_policy(u_scale):
+        while True:
+            state = yield u_scale*(random.random()-0.5)
+
+
+
+
 if __name__ == "__main__":
+    assert(len(sys.argv[1:])==2)
     dt = 0.01
     dyn = Dynamics(m=5, g=9.81, l=2, b=0.5, dt=dt)
     T = 15
-    rate = 0.001
+    rate = float(sys.argv[1])
 
 
     N = int(T/dt)
 
-    u_scale = 0
-    u_traj = [u_scale*random.random()-0.5 for i in range(N)]
-    u = u_traj[0]
+    policy = Controller(u_scale = 0, policy=Controller.random_policy)
+
     theta_0 = np.pi/2
     theta_dot_0 = 0
     x0 = np.array((theta_0, theta_dot_0), dtype=PendulumPhase)
+    u0 = policy(x0)
     traj = np.empty((N,), dtype=PendulumPhase)
     traj[0] = x0
-    x1 = dyn(x0, u_traj[0])
+    x1 = dyn(x0, u0)
     traj[1] = x1
     model_learner = MLPRegressor(random_state=1, learning_rate='constant', solver='sgd', learning_rate_init=rate, max_iter=500)
     predicted_traj = np.empty((N,), dtype=PendulumPhase)
     predicted_traj[0] = None
     predicted_traj[1] = None
-    model_learner.partial_fit(X=np.array([x0['theta'], x0['theta_dot'], u]).reshape(1, -1),
+    model_learner.partial_fit(X=np.array([x0['theta'], x0['theta_dot'], u0]).reshape(1, -1),
                               y=np.array([x1['theta'], x1['theta_dot']]).reshape(1, -1))
 
     error_traj = np.empty((N,), dtype=PendulumPhase)
     error_traj[0], error_traj[1] = (None, None)
-    num_dynamics_epochs = 10
+    num_dynamics_epochs = int(sys.argv[2])#10
     num_control_epochs = num_dynamics_epochs*10
 
     control_epoch_length = int(N/num_control_epochs)
     dynamics_epoch_length = int(N/num_dynamics_epochs)
-    x = x1
 
+    x = x1
+    u = u0
     for i in range(2, N):
         if i % control_epoch_length == 0:
-            u = u_traj[i]
+            u = policy(x)
 
         if i % dynamics_epoch_length == 0:
             dyn.update()
@@ -130,6 +151,7 @@ if __name__ == "__main__":
     fig, axs = plt.subplots(2,2)
     plot_comparison('theta', [axs[0,0], axs[0,1]])
     plot_comparison('theta_dot', [axs[1,0], axs[1,1]])
+    fig.suptitle(f"Learning rate {rate}, Dynamics Epochs: {num_dynamics_epochs}")
     plt.show()
 
 
