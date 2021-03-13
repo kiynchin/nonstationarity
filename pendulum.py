@@ -49,6 +49,7 @@ def plot_comparison(field: str):
     plt.ylabel("Prediction % Error")
     plt.title(f"Error in {field} vs. Dynamics Changes")
     plt.legend(["Error", "Dynamics Shift"])
+    plt.ylim((0,100))
     plt.show()
 
 
