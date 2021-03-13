@@ -32,6 +32,8 @@ def plot_comparison(field: str):
     plt.figure()
     plt.plot(np.linspace(0, T, N), traj[field], c='k')
     plt.scatter(np.linspace(0, T, N), predicted_traj[field], c='b')
+    for i in range(1, num_dynamics_epochs):
+        plt.axvline(T*i/num_dynamics_epochs)
 
     plt.xlabel("Time (s)")
     plt.ylabel(field)
@@ -84,8 +86,8 @@ if __name__ == "__main__":
 
     error_traj = np.empty((N,), dtype=PendulumPhase)
     error_traj[0], error_traj[1] = (None, None)
-    num_control_epochs = 1
-    num_dynamics_epochs = 10
+    num_dynamics_epochs = 50
+    num_control_epochs = num_dynamics_epochs*10
 
     control_epoch_length = int(N/num_control_epochs)
     dynamics_epoch_length = int(N/num_dynamics_epochs)
