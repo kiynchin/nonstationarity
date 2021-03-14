@@ -14,8 +14,9 @@ class Dynamics:
         self.l = l
         self.b = b
         self.dt = dt
-        self.schedule = Dynamics.oscillating([0.25, 0.75])
-        self.schedule = Dynamics.asymptotic(1.5)
+        self.schedule = Dynamics.constant(0.5)
+        # self.schedule = Dynamics.oscillating([0.25, 0.75])
+        # self.schedule = Dynamics.asymptotic(1.5)
 
     def __call__(self, x:PendulumPhase, u):
         m = self.m
@@ -39,6 +40,10 @@ class Dynamics:
         while True:
             for value in values:
                 yield value
+
+    def constant(value):
+        while True:
+            yield value
 
     def update(self):
         self.b = next(self.schedule)
