@@ -8,15 +8,18 @@ PendulumPhase = np.dtype([('theta', 'f8'), ('theta_dot', 'f8')])
 
 
 class Dynamics:
-    def __init__(self, m, g, l, b, dt):
+    def __init__(self, m, g, l, b, dt, schedule):
         self.m = m
         self.g = g
         self.l = l
         self.b = b
         self.dt = dt
-        self.schedule = Dynamics.constant(0.5)
-        # self.schedule = Dynamics.oscillating([0.25, 0.75])
-        # self.schedule = Dynamics.asymptotic(1.5)
+        if schedule == 0:
+            self.schedule = Dynamics.constant(0.5)
+        if schedule == 1:
+            self.schedule = Dynamics.asymptotic(1.5)
+        if schedule == 2:
+            self.schedule = Dynamics.oscillating([0.25, 0.75])
 
     def __call__(self, x:PendulumPhase, u):
         m = self.m
@@ -98,16 +101,19 @@ class Controller:
 
 
 if __name__ == "__main__":
-    assert(len(sys.argv[1:])==2)
+    assert(len(sys.argv[1:])==4)
+    drift_type = int(sys.argv[3]) 
+    driftmap = {0:"constant", 1:"decaying", 2:"oscillating"}
     dt = 0.01
-    dyn = Dynamics(m=5, g=9.81, l=2, b=0.5, dt=dt)
+    dyn = Dynamics(m=5, g=9.81, l=2, b=0.5, dt=dt, schedule=drift_type)
     T = 15
     rate = float(sys.argv[1])
 
 
     N = int(T/dt)
 
-    policy = Controller(u_scale = 0, policy=Controller.random_policy)
+    max_torque = float(sys.argv[4])
+    policy = Controller(u_scale = max_torque, policy=Controller.random_policy)
 
     theta_0 = np.pi/2
     theta_dot_0 = 0
@@ -156,7 +162,10 @@ if __name__ == "__main__":
     fig, axs = plt.subplots(2,2)
     plot_comparison('theta', [axs[0,0], axs[0,1]])
     plot_comparison('theta_dot', [axs[1,0], axs[1,1]])
-    fig.suptitle(f"Learning rate {rate}, Dynamics Epochs: {num_dynamics_epochs}")
+    fig.suptitle(f"Dynamics Drift: {driftmap[drift_type]}, Learning rate {rate}, Dynamics Epochs: {num_dynamics_epochs}, Max torque: {max_torque}")
+    fig.set_size_inches(12, 12)
     plt.show()
+    save = input(f"Save? (y/N)")
 
-
+    if save == "y":
+        fig.savefig(f"dd{driftmap[drift_type]}lr{rate}de{num_dynamics_epochs}umax{max_torque}.png")
