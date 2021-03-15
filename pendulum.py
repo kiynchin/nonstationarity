@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import random
 from sklearn.neural_network import MLPRegressor
 import sys
+from skopt import gp_minimize
 
 PendulumPhase = np.dtype([('theta', 'f8'), ('theta_dot', 'f8')])
 
@@ -77,9 +78,41 @@ def plot_comparison(field: str, axs):
 
 
 
-class ModelLearner:
-    def __init__(self, x0, x1):
+class NeuralModelLearner:
+    def __init__(self, rate):
+        self.network = model_learner = MLPRegressor(random_state=1, learning_rate='constant', solver='sgd', learning_rate_init=rate, max_iter=500)
+
+    def observe(self, X, y):
+        self.network.partial_fit(X,y)
+
+    def predict(self, X):
+        xnew_predicted = self.network.predict(X)
+        xnew_predicted = np.array((xnew_predicted[0, 0], xnew_predicted[0, 1]), dtype=PendulumPhase)
+        return xnew_predicted
+
+
+class AnalyticModelLearner:
+    def __init__(self, dt):
+        self.history = []
+        self.dyn = Dynamics(self, m=1, g=9.81, l=1, b=0, dt=dt, schedule=0)
+
+    def observe(self, X, y):
+        self.history.append((X,y))
+
+    def predict(self, X):
+        x = np.array((X[0], X[1]), dtype=PendulumPhase)
+        u = X[2]
+        self.dyn = self.optimize_model()
+        xnew_predicted = self.dyn(x,u)
+        xnew_predicted = np.array((xnew_predicted[0, 0], xnew_predicted[0, 1]), dtype=PendulumPhase)
+        return xnew_predicted
+
+    def prediction_error(self, dynamics):
         pass
+
+    def optimize_model(self):
+        pass
+
 
 
 class Controller:
@@ -123,11 +156,12 @@ if __name__ == "__main__":
     traj[0] = x0
     x1 = dyn(x0, u0)
     traj[1] = x1
-    model_learner = MLPRegressor(random_state=1, learning_rate='constant', solver='sgd', learning_rate_init=rate, max_iter=500)
+    model_learner = NeuralModelLearner(rate)
+
     predicted_traj = np.empty((N,), dtype=PendulumPhase)
     predicted_traj[0] = None
     predicted_traj[1] = None
-    model_learner.partial_fit(X=np.array([x0['theta'], x0['theta_dot'], u0]).reshape(1, -1),
+    model_learner.observe(X=np.array([x0['theta'], x0['theta_dot'], u0]).reshape(1, -1),
                               y=np.array([x1['theta'], x1['theta_dot']]).reshape(1, -1))
 
     error_traj = np.empty((N,), dtype=PendulumPhase)
@@ -150,12 +184,11 @@ if __name__ == "__main__":
         xnew_actual = dyn(x, u)
         traj[i] = xnew_actual
         xnew_predicted = model_learner.predict(np.array([x['theta'], x['theta_dot'], u]).reshape(1, -1))
-        xnew_predicted = np.array((xnew_predicted[0, 0], xnew_predicted[0, 1]), dtype=PendulumPhase)
         predicted_traj[i] = xnew_predicted
         error = ((xnew_predicted['theta']-xnew_actual['theta'])/xnew_predicted['theta'],
                  (xnew_predicted['theta_dot']-xnew_actual['theta_dot'])/xnew_predicted['theta_dot'])
         error_traj[i] = np.array(error, dtype=PendulumPhase)
-        model_learner.partial_fit(X=np.array([x['theta'], x['theta_dot'], u]).reshape(1, -1),
+        model_learner.observe(X=np.array([x['theta'], x['theta_dot'], u]).reshape(1, -1),
                                    y=np.array([xnew_actual['theta'], xnew_actual['theta_dot']]).reshape(1, -1))
         x = xnew_actual
 
