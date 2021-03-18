@@ -20,7 +20,7 @@ class Dynamics:
         if schedule == 1:
             self.schedule = Dynamics.asymptotic(1.5)
         if schedule == 2:
-            self.schedule = Dynamics.oscillating([0.25, 0.75])
+            self.schedule = Dynamics.oscillating([0, 1.5])
 
     def __call__(self, x:PendulumPhase, u):
         m = self.m
