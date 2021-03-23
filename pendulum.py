@@ -4,23 +4,37 @@ import random
 from sklearn.neural_network import MLPRegressor
 import sys
 from skopt import gp_minimize
+from collections import deque
+import sklearn.metrics as metrics
+import pdb
 
 PendulumPhase = np.dtype([('theta', 'f8'), ('theta_dot', 'f8')])
 
 
+
+class DriftScheduler:
+    def __init__(self, dyn, schedule):
+        self.dyn = dyn
+        if schedule == 0:
+            self.schedule = dyn.__class__.constant()
+        if schedule == 1:
+            self.schedule = dyn.__class__.asymptotic()
+        if schedule == 2:
+            self.schedule = dyn.__class__.oscillating()
+
+    def __call__(self, x, u):
+        return self.dyn(x,u)
+
+    def update(self):
+        self.dyn.update(self.schedule)
+
 class Dynamics:
-    def __init__(self, m, g, l, b, dt, schedule):
+    def __init__(self, m, g, l, b, dt):
         self.m = m
         self.g = g
         self.l = l
         self.b = b
         self.dt = dt
-        if schedule == 0:
-            self.schedule = Dynamics.constant(0.5)
-        if schedule == 1:
-            self.schedule = Dynamics.asymptotic(1.5)
-        if schedule == 2:
-            self.schedule = Dynamics.oscillating([0, 1.5])
 
     def __call__(self, x:PendulumPhase, u):
         m = self.m
@@ -32,7 +46,7 @@ class Dynamics:
         theta_dot_new = x['theta_dot'] + alpha*self.dt
         return np.array((theta_new, theta_dot_new), dtype=PendulumPhase)
 
-    def asymptotic(init):
+    def asymptotic(init=1.5):
         max_b = 2
         value = init
         assert(value<max_b)
@@ -40,17 +54,17 @@ class Dynamics:
             value = 0.1*max_b+0.9*value
             yield value
 
-    def oscillating(values):
+    def oscillating(values=[0, 1.5]):
         while True:
             for value in values:
                 yield value
 
-    def constant(value):
+    def constant(value=0.5):
         while True:
             yield value
 
-    def update(self):
-        self.b = next(self.schedule)
+    def update(self, schedule):
+        self.b = next(schedule)
 
 
 
@@ -79,7 +93,7 @@ def plot_comparison(field: str, axs):
 
 
 class NeuralModelLearner:
-    def __init__(self, rate):
+    def __init__(self, **kwargs):
         self.network = model_learner = MLPRegressor(random_state=1, learning_rate='constant', solver='sgd', learning_rate_init=rate, max_iter=500)
 
     def observe(self, X, y):
@@ -92,26 +106,47 @@ class NeuralModelLearner:
 
 
 class AnalyticModelLearner:
-    def __init__(self, dt):
-        self.history = []
-        self.dyn = Dynamics(self, m=1, g=9.81, l=1, b=0, dt=dt, schedule=0)
+    def __init__(self, dt, memory_size):
+        self.memory = deque(maxlen=memory_size)
+        self.dt =dt
+        self.dyn = Dynamics(m=1, g=9.81, l=1, b=0, dt=dt)
 
     def observe(self, X, y):
-        self.history.append((X,y))
+        self.memory.append((X,y))
+        self.dyn = self.optimize_model()
 
     def predict(self, X):
         x = np.array((X[0], X[1]), dtype=PendulumPhase)
         u = X[2]
-        self.dyn = self.optimize_model()
         xnew_predicted = self.dyn(x,u)
         xnew_predicted = np.array((xnew_predicted[0, 0], xnew_predicted[0, 1]), dtype=PendulumPhase)
         return xnew_predicted
 
-    def prediction_error(self, dynamics):
-        pass
 
     def optimize_model(self):
-        pass
+        memory = self.memory
+        dt = self.dt
+        def prediction_loss(dyn_params):
+            m,g,l,b = dyn_params
+            dyn = Dynamics(m,g,l,b,dt)
+            y_pred = np.empty((len(memory),2))
+            y_true = np.empty((len(memory),2))
+            for i, datum in enumerate(memory):
+                breakpoint()
+                true = datum[1][0]
+                x = np.array(datum[0][0,:2], dtype=PendulumPhase)
+                u = datum[0][0,2]
+                pred = dyn(x,u)
+
+                y_true[i] = true
+                y_pred[i] = pred
+
+            return metrics.mse(y_true, y_pred)
+
+        bounds = [(0.0, 10.0), (0.0, 20.0), (0.1, 10.0), (0.0, 2.0)]
+        res = gp_minimize(prediction_loss, dimensions=bounds)
+        m, g, l, b = res.x
+        return Dynamics(m,g,l,b,dt)
 
 
 
@@ -138,7 +173,7 @@ if __name__ == "__main__":
     drift_type = int(sys.argv[3]) 
     driftmap = {0:"constant", 1:"decaying", 2:"oscillating"}
     dt = 0.01
-    dyn = Dynamics(m=5, g=9.81, l=2, b=0.5, dt=dt, schedule=drift_type)
+    dyn = DriftScheduler(Dynamics(m=5, g=9.81, l=2, b=0.5, dt=dt), schedule=drift_type)
     T = 15
     rate = float(sys.argv[1])
 
@@ -146,7 +181,8 @@ if __name__ == "__main__":
     N = int(T/dt)
 
     max_torque = float(sys.argv[4])
-    policy = Controller(u_scale = max_torque, policy=Controller.random_policy)
+    policy = Controller(u_scale = max_torque, policy=Controller.random_policy) 
+    model_learner = NeuralModelLearner(dt=dt, memory_size=10, rate=rate)
 
     theta_0 = np.pi/2
     theta_dot_0 = 0
@@ -156,7 +192,6 @@ if __name__ == "__main__":
     traj[0] = x0
     x1 = dyn(x0, u0)
     traj[1] = x1
-    model_learner = NeuralModelLearner(rate)
 
     predicted_traj = np.empty((N,), dtype=PendulumPhase)
     predicted_traj[0] = None
