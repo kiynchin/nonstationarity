@@ -4,8 +4,9 @@ import random
 from sklearn.neural_network import MLPRegressor
 import sys
 from skopt import gp_minimize
+from abc import ABC, abstractmethod
 
-PendulumPhase = np.dtype([('theta', 'f8'), ('theta_dot', 'f8')])
+PendulumPhase = np.dtype([('theta', 'float32'), ('theta_dot', 'float32')])
 
 
 class Dynamics:
@@ -76,9 +77,17 @@ def plot_comparison(field: str, axs):
     ax1.legend(["Error", "Dynamics Shift"])
     ax1.set_ylim((0,100))
 
+class ModelLearner(ABC):
+    @abstractmethod
+    def observe(self, X, y):
+        pass
+
+    @abstractmethod
+    def predict(self,X):
+        pass
 
 
-class NeuralModelLearner:
+class NeuralModelLearner(ModelLearner):
     def __init__(self, rate):
         self.network = model_learner = MLPRegressor(random_state=1, learning_rate='constant', solver='sgd', learning_rate_init=rate, max_iter=500)
 
@@ -91,7 +100,7 @@ class NeuralModelLearner:
         return xnew_predicted
 
 
-class AnalyticModelLearner:
+class AnalyticModelLearner(ModelLearner):
     def __init__(self, dt):
         self.history = []
         self.dyn = Dynamics(self, m=1, g=9.81, l=1, b=0, dt=dt, schedule=0)
@@ -132,20 +141,28 @@ class Controller:
 
 
 
+def loss(xnew_actual, xnew_predicted):
+    # error = (xnew_predicted['theta']-xnew_actual['theta'])/xnew_predicted['theta'],
+                 # (xnew_predicted['theta_dot']-xnew_actual['theta_dot'])/xnew_predicted['theta_dot']
+    error = ((xnew_predicted['theta']-xnew_actual['theta'])**2,(xnew_predicted['theta_dot']-xnew_actual['theta_dot'])**2)
+    return error
+
 
 if __name__ == "__main__":
     assert(len(sys.argv[1:])==4)
+    rate = float(sys.argv[1])
+    num_dynamics_epochs = int(sys.argv[2])
     drift_type = int(sys.argv[3]) 
+    max_torque = float(sys.argv[4])
+
     driftmap = {0:"constant", 1:"decaying", 2:"oscillating"}
     dt = 0.01
     dyn = Dynamics(m=5, g=9.81, l=2, b=0.5, dt=dt, schedule=drift_type)
     T = 15
-    rate = float(sys.argv[1])
 
 
     N = int(T/dt)
 
-    max_torque = float(sys.argv[4])
     policy = Controller(u_scale = max_torque, policy=Controller.random_policy)
 
     theta_0 = np.pi/2
@@ -166,7 +183,6 @@ if __name__ == "__main__":
 
     error_traj = np.empty((N,), dtype=PendulumPhase)
     error_traj[0], error_traj[1] = (None, None)
-    num_dynamics_epochs = int(sys.argv[2])#10
     num_control_epochs = num_dynamics_epochs*10
 
     control_epoch_length = int(N/num_control_epochs)
@@ -185,9 +201,8 @@ if __name__ == "__main__":
         traj[i] = xnew_actual
         xnew_predicted = model_learner.predict(np.array([x['theta'], x['theta_dot'], u]).reshape(1, -1))
         predicted_traj[i] = xnew_predicted
-        error = ((xnew_predicted['theta']-xnew_actual['theta'])/xnew_predicted['theta'],
-                 (xnew_predicted['theta_dot']-xnew_actual['theta_dot'])/xnew_predicted['theta_dot'])
-        error_traj[i] = np.array(error, dtype=PendulumPhase)
+        error = loss(xnew_actual, xnew_predicted)
+        error_traj[i] = np.array(error)
         model_learner.observe(X=np.array([x['theta'], x['theta_dot'], u]).reshape(1, -1),
                                    y=np.array([xnew_actual['theta'], xnew_actual['theta_dot']]).reshape(1, -1))
         x = xnew_actual
