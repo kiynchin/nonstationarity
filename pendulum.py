@@ -8,10 +8,28 @@ from abc import ABC, abstractmethod
 from collections import deque
 import sklearn.metrics as metrics
 import pdb
+import time
 
-# PendulumPhase = np.dtype([(0, 'float32'), (1, 'float32')])
+def plot_comparison(field, fmap,  axs):
+    ax0 = axs[0]
+    ax0.plot(np.linspace(0, T, N), traj[:,fmap[field]], c='k')
+    ax0.scatter(np.linspace(0, T, N), predicted_traj[:,fmap[field]], c='b')
+    for i in range(1, num_dynamics_epochs):
+        ax0.axvline(T*i/num_dynamics_epochs)
 
+    ax0.set_xlabel("Time (s)")
+    ax0.set_ylabel(field)
+    ax0.legend(["Ground Truth", "Model Prediction"])
+    ax0.set_title(f"Tracking performance of {field}")
 
+    ax1 = axs[1]
+    ax1.plot(np.linspace(0, T, N), np.abs(error_traj[:,fmap[field]]), c='r')
+    for i in range(1, num_dynamics_epochs):
+        ax1.axvline(T*i/num_dynamics_epochs)
+    ax1.set_xlabel("Time (s)")
+    ax1.set_ylabel("Prediction % Error")
+    ax1.set_title(f"Error in {field} vs. Dynamics Changes")
+    ax1.legend(["Error", "Dynamics Shift"])
 
 class DriftScheduler:
     def __init__(self, dyn, schedule):
@@ -28,6 +46,15 @@ class DriftScheduler:
 
     def update(self):
         self.dyn.update(self.schedule)
+
+class ModelLearner(ABC):
+    @abstractmethod
+    def observe(self, X, y):
+        pass
+
+    @abstractmethod
+    def predict(self,X):
+        pass
 
 class PendulumDynamics:
     def __init__(self, m, g, l, b, dt):
@@ -69,37 +96,6 @@ class PendulumDynamics:
 
 
 
-def plot_comparison(field, fmap,  axs):
-    ax0 = axs[0]
-    ax0.plot(np.linspace(0, T, N), traj[:,fmap[field]], c='k')
-    ax0.scatter(np.linspace(0, T, N), predicted_traj[:,fmap[field]], c='b')
-    for i in range(1, num_dynamics_epochs):
-        ax0.axvline(T*i/num_dynamics_epochs)
-
-    ax0.set_xlabel("Time (s)")
-    ax0.set_ylabel(field)
-    ax0.legend(["Ground Truth", "Model Prediction"])
-    ax0.set_title(f"Tracking performance of {field}")
-
-    ax1 = axs[1]
-    ax1.plot(np.linspace(0, T, N), np.abs(error_traj[:,fmap[field]]), c='r')
-    for i in range(1, num_dynamics_epochs):
-        ax1.axvline(T*i/num_dynamics_epochs)
-    ax1.set_xlabel("Time (s)")
-    ax1.set_ylabel("Prediction % Error")
-    ax1.set_title(f"Error in {field} vs. Dynamics Changes")
-    ax1.legend(["Error", "Dynamics Shift"])
-
-class ModelLearner(ABC):
-    @abstractmethod
-    def observe(self, X, y):
-        pass
-
-    @abstractmethod
-    def predict(self,X):
-        pass
-
-
 class NeuralModelLearner(ModelLearner):
     def __init__(self, rate):
         self.network = model_learner = MLPRegressor(random_state=1, learning_rate='constant', solver='sgd', learning_rate_init=rate, max_iter=500)
@@ -121,13 +117,13 @@ class AnalyticModelLearner(ModelLearner):
 
     def observe(self, X, y):
         self.memory.append((X,y))
-        self.dyn = self.optimize_model()
 
     def predict(self, X):
-        x = np.array((X[0], X[1]))
-        u = X[2]
+        self.dyn = self.optimize_model()
+        x = np.array((X[0,0], X[0,1]))
+        u = X[0,2]
         xnew_predicted = self.dyn(x,u)
-        xnew_predicted = np.array((xnew_predicted[0, 0], xnew_predicted[0, 1]))
+        # xnew_predicted = np.array((xnew_predicted[0, 0], xnew_predicted[0, 1]))
         return xnew_predicted
 
 
@@ -150,8 +146,8 @@ class AnalyticModelLearner(ModelLearner):
 
             return metrics.mean_squared_error(y_true, y_pred)
 
-        bounds = [(0.0, 10.0), (0.0, 20.0), (0.1, 10.0), (0.0, 2.0)]
-        res = gp_minimize(prediction_loss, dimensions=bounds)
+        bounds = [(0.1, 10.0), (0.0, 20.0), (0.1, 10.0), (0.0, 2.0)]
+        res = gp_minimize(prediction_loss, dimensions=bounds, n_calls=10, n_restarts_optimizer=1)
         m, g, l, b = res.x
         return PendulumDynamics(m,g,l,b,dt)
 
@@ -198,19 +194,19 @@ if __name__ == "__main__":
 
     max_torque = float(sys.argv[4])
     policy = Controller(u_scale = max_torque, policy=Controller.random_policy)
-    # model_learner = AnalyticModelLearner(dt=dt, memory_size=10)
-    model_learner = NeuralModelLearner(rate=rate)
+
+    t0 = time.time()
+    model_learner = AnalyticModelLearner(dt=dt, memory_size=10)
+    # model_learner = NeuralModelLearner(rate=rate)
 
     theta_0 = np.pi/2
     theta_dot_0 = 0
     x0 = np.array((theta_0, theta_dot_0))
-    breakpoint()
     u0 = policy(x0)
     traj = np.empty((N,2))
     traj[0] = x0
     x1 = dyn(x0, u0)
     traj[1] = x1
-    breakpoint()
 
     predicted_traj = np.empty((N,2))
     predicted_traj[0] = None
@@ -244,6 +240,8 @@ if __name__ == "__main__":
                                    y=np.array([xnew_actual[0], xnew_actual[1]]).reshape(1, -1))
         x = xnew_actual
 
+    t1 = time.time()
+    print(f"Elapsed time (s): {t1-t0}")
     fig, axs = plt.subplots(2,2)
     fmap ={"theta":0, "theta_dot":1}
     plot_comparison('theta', fmap, [axs[0,0], axs[0,1]])
