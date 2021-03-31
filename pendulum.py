@@ -9,6 +9,7 @@ from collections import deque
 import sklearn.metrics as metrics
 import pdb
 import time
+import argparse
 
 def plot_comparison(field, fmap,  axs):
     ax0 = axs[0]
@@ -27,18 +28,18 @@ def plot_comparison(field, fmap,  axs):
     for i in range(1, num_dynamics_epochs):
         ax1.axvline(T*i/num_dynamics_epochs)
     ax1.set_xlabel("Time (s)")
-    ax1.set_ylabel("Prediction % Error")
+    ax1.set_ylabel("Prediction Squared Error")
     ax1.set_title(f"Error in {field} vs. Dynamics Changes")
     ax1.legend(["Error", "Dynamics Shift"])
 
 class DriftScheduler:
     def __init__(self, dyn, schedule):
         self.dyn = dyn
-        if schedule == 0:
+        if schedule == "constant":
             self.schedule = dyn.__class__.constant()
-        if schedule == 1:
+        if schedule == "decaying":
             self.schedule = dyn.__class__.asymptotic()
-        if schedule == 2:
+        if schedule == "oscillating":
             self.schedule = dyn.__class__.oscillating()
 
     def __call__(self, x, u):
@@ -177,49 +178,61 @@ def loss(xnew_actual, xnew_predicted):
     return error
 
 
+def setup_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("rate", help="learning rate for neural learner", type=float)
+    parser.add_argument("drift_type", choices=["constant", "decaying", "oscillating"], help="type of dynamics drift")
+    parser.add_argument("torque_range", help="total range of pendulum torques, 0-centered", type=float)
+    parser.add_argument("-num_dynamics_epochs", help="number of distinct dynamics", type=int, default=50)
+    parser.add_argument("-num_control_epochs", help="number of distinct dynamics", type=int, default=500)
+    parser.add_argument("-learner", help="which type of learner", choices=["neural", "analytic"], default="neural")
+    parser.add_argument("--save", help="whether to display save prompt at end", action="store_true")
+    parser.add_argument("-T", help="duration of experiment", type=float, default=15)
+    parser.add_argument("-dt", help="time step of simulation", type=float, default=0.01)
+    return parser
+
+
+
+
 if __name__ == "__main__":
-    assert(len(sys.argv[1:])==4)
-    rate = float(sys.argv[1])
-    num_dynamics_epochs = int(sys.argv[2])
-    drift_type = int(sys.argv[3]) 
-    max_torque = float(sys.argv[4])
-
-    driftmap = {0:"constant", 1:"decaying", 2:"oscillating"}
-    dt = 0.01
-    dyn = DriftScheduler(PendulumDynamics(m=5, g=9.81, l=2, b=0.5, dt=dt), schedule=drift_type)
-    T = 15
-
-
+    args = setup_parser().parse_args()
+    rate = args.rate
+    num_dynamics_epochs = args.num_dynamics_epochs
+    drift_type = args.drift_type
+    torque_range = args.torque_range
+    T = args.T
+    dt = args.dt
+    num_control_epochs = args.num_control_epochs
     N = int(T/dt)
+    control_epoch_length = int(N/num_control_epochs)
+    dynamics_epoch_length = int(N/num_dynamics_epochs)
 
-    max_torque = float(sys.argv[4])
-    policy = Controller(u_scale = max_torque, policy=Controller.random_policy)
+    dyn = DriftScheduler(PendulumDynamics(m=5, g=9.81, l=2, b=0.5, dt=dt), schedule=drift_type)
+    policy = Controller(u_scale = torque_range, policy=Controller.random_policy)
 
     t0 = time.time()
-    model_learner = AnalyticModelLearner(dt=dt, memory_size=10)
-    # model_learner = NeuralModelLearner(rate=rate)
+    if args.learner=="analytic":
+        model_learner = AnalyticModelLearner(dt=dt, memory_size=10)
+    if args.learner=="neural":
+        model_learner = NeuralModelLearner(rate=rate)
 
-    theta_0 = np.pi/2
-    theta_dot_0 = 0
-    x0 = np.array((theta_0, theta_dot_0))
+    x0 = np.array((np.pi/2, 0))
     u0 = policy(x0)
+
+
     traj = np.empty((N,2))
     traj[0] = x0
     x1 = dyn(x0, u0)
     traj[1] = x1
-
     predicted_traj = np.empty((N,2))
     predicted_traj[0] = None
     predicted_traj[1] = None
+    error_traj = np.empty((N,2))
+    error_traj[0], error_traj[1] = (None, None)
+
     model_learner.observe(X=np.array([x0[0], x0[1], u0]).reshape(1, -1),
                               y=np.array([x1[0], x1[1]]).reshape(1, -1))
 
-    error_traj = np.empty((N,2))
-    error_traj[0], error_traj[1] = (None, None)
-    num_control_epochs = num_dynamics_epochs*10
-
-    control_epoch_length = int(N/num_control_epochs)
-    dynamics_epoch_length = int(N/num_dynamics_epochs)
 
     x = x1
     u = u0
@@ -246,10 +259,12 @@ if __name__ == "__main__":
     fmap ={"theta":0, "theta_dot":1}
     plot_comparison('theta', fmap, [axs[0,0], axs[0,1]])
     plot_comparison('theta_dot', fmap, [axs[1,0], axs[1,1]])
-    fig.suptitle(f"Dynamics Drift: {driftmap[drift_type]}, Learning rate {rate}, Dynamics Epochs: {num_dynamics_epochs}, Max torque: {max_torque}")
+    fig.suptitle(f"Learner: {args.learner}, Dynamics Drift: {drift_type}, Learning rate {rate}, Dynamics Epochs: {num_dynamics_epochs}, Max torque: {torque_range}")
     fig.set_size_inches(12, 12)
     plt.show()
-    save = input(f"Save? (y/N)")
+    if args.save:
+        save = input(f"Save? (Y/n):")
 
-    if save == "y":
-        fig.savefig(f"dd{driftmap[drift_type]}lr{rate}de{num_dynamics_epochs}umax{max_torque}.png")
+        if save != "n":
+            leader = input("Enter leading filename (<Enter> for default):")
+            fig.savefig(f"dd{drift_type}lr{rate}de{num_dynamics_epochs}umax{torque_range}.png")
