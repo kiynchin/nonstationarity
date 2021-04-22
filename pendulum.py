@@ -10,6 +10,10 @@ import sklearn.metrics as metrics
 import pdb
 import time
 import argparse
+from NonstationaryEnvironments import test, DriftScheduler
+
+
+
 
 def plot_comparison(field, fmap,  axs):
     ax0 = axs[0]
@@ -32,21 +36,6 @@ def plot_comparison(field, fmap,  axs):
     ax1.set_title(f"Error in {field} vs. Dynamics Changes")
     ax1.legend(["Error", "Dynamics Shift"])
 
-class DriftScheduler:
-    def __init__(self, dyn, schedule):
-        self.dyn = dyn
-        if schedule == "constant":
-            self.schedule = dyn.__class__.constant()
-        if schedule == "decaying":
-            self.schedule = dyn.__class__.asymptotic()
-        if schedule == "oscillating":
-            self.schedule = dyn.__class__.oscillating()
-
-    def __call__(self, x, u):
-        return self.dyn(x,u)
-
-    def update(self):
-        self.dyn.update(self.schedule)
 
 class ModelLearner(ABC):
     @abstractmethod
