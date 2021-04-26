@@ -169,9 +169,9 @@ def loss(xnew_actual, xnew_predicted):
 
 def setup_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("rate", help="learning rate for neural learner", type=float)
-    parser.add_argument("drift_type", choices=["constant", "decaying", "oscillating"], help="type of dynamics drift")
-    parser.add_argument("torque_range", help="total range of pendulum torques, 0-centered", type=float)
+    parser.add_argument("-rate", help="learning rate for neural learner", type=float, default=0.01)
+    parser.add_argument("drift_type", choices=["constant", "decaying", "oscillating", "supervised"], help="type of dynamics drift")
+    parser.add_argument("-torque_range", help="total range of pendulum torques, 0-centered", type=float, default=1.0)
     parser.add_argument("-num_dynamics_epochs", help="number of distinct dynamics", type=int, default=50)
     parser.add_argument("-num_control_epochs", help="number of distinct dynamics", type=int, default=500)
     parser.add_argument("-learner", help="which type of learner", choices=["neural", "analytic"], default="neural")
@@ -196,8 +196,13 @@ if __name__ == "__main__":
     control_epoch_length = int(N/num_control_epochs)
     dynamics_epoch_length = int(N/num_dynamics_epochs)
 
-    dyn = DriftScheduler(PendulumDynamics(m=5, g=9.81, l=2, b=0.5, dt=dt), schedule=drift_type)
     policy = Controller(u_scale = torque_range, policy=Controller.random_policy)
+
+    x0 = np.array([np.pi/2, 0])
+    u0 = policy(x0)
+
+    env = DriftScheduler(PendulumDynamics(m=5, g=9.81, l=2, b=0.5, dt=dt), state=x0, drift_speed = 1.0/dynamics_epoch_length, schedule=drift_type)
+
 
     t0 = time.time()
     if args.learner=="analytic":
@@ -205,13 +210,11 @@ if __name__ == "__main__":
     if args.learner=="neural":
         model_learner = NeuralModelLearner(rate=rate)
 
-    x0 = np.array((np.pi/2, 0))
-    u0 = policy(x0)
 
 
     traj = np.empty((N,2))
     traj[0] = x0
-    x1 = dyn(x0, u0)
+    x1 = env.step(u0)
     traj[1] = x1
     predicted_traj = np.empty((N,2))
     predicted_traj[0] = None
@@ -223,16 +226,17 @@ if __name__ == "__main__":
                               y=np.array([x1[0], x1[1]]).reshape(1, -1))
 
 
-    x = x1
+    # x = x1
     u = u0
     for i in range(2, N):
+        x = env._get_obs()
         if i % control_epoch_length == 0:
             u = policy(x)
 
-        if i % dynamics_epoch_length == 0:
-            dyn.update()
+        # if i % dynamics_epoch_length == 0:
+            # dyn.update()
 
-        xnew_actual = dyn(x, u)
+        xnew_actual = env.step(u)
         traj[i] = xnew_actual
         xnew_predicted = model_learner.predict(np.array([x[0], x[1], u]).reshape(1, -1))
         predicted_traj[i] = xnew_predicted
@@ -240,7 +244,7 @@ if __name__ == "__main__":
         error_traj[i] = error
         model_learner.observe(X=np.array([x[0], x[1], u]).reshape(1, -1),
                                    y=np.array([xnew_actual[0], xnew_actual[1]]).reshape(1, -1))
-        x = xnew_actual
+        # x = xnew_actual
 
     t1 = time.time()
     print(f"Elapsed time (s): {t1-t0}")
