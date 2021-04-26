@@ -5,6 +5,7 @@ import sklearn.metrics as metrics
 import random
 import numpy as np
 
+
 class ModelLearner(ABC):
     @abstractmethod
     def observe(self, X, y, drifted):
@@ -83,27 +84,8 @@ class AnalyticModelLearner(ModelLearner):
 
 
 
-class Controller:
-    def __init__(self, u_scale, policy):
-        self.u_scale = u_scale
-        self.policy = policy(self.u_scale)
-        next(self.policy)
-
-    def __call__(self, state):
-        self.policy.send(state)
-        return next(self.policy)
-
-
-    def random_policy(u_scale):
-        while True:
-            state = yield u_scale*(random.random()-0.5)
 
 
 
-def loss(xnew_actual, xnew_predicted):
-    # error = (xnew_predicted[0]-xnew_actual[0])/xnew_predicted[0],
-                 # (xnew_predicted[1]-xnew_actual[1])/xnew_predicted[1]
-    error = np.array(((xnew_predicted[0]-xnew_actual[0])**2,(xnew_predicted[1]-xnew_actual[1])**2))
-    return error
 
 
