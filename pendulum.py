@@ -201,7 +201,7 @@ if __name__ == "__main__":
     x0 = np.array([np.pi/2, 0])
     u0 = policy(x0)
 
-    env = DriftScheduler(PendulumDynamics(m=5, g=9.81, l=2, b=0.5, dt=dt), state=x0, drift_speed = 1.0/dynamics_epoch_length, schedule=drift_type)
+    env = DriftScheduler(PendulumDynamics(m=5, g=9.81, l=2, b=0.5, dt=dt), state=x0, drift_speed = 1.0/dynamics_epoch_length, drift_type=drift_type, schedule="extrinsic")
 
 
     t0 = time.time()
@@ -226,16 +226,11 @@ if __name__ == "__main__":
                               y=np.array([x1[0], x1[1]]).reshape(1, -1))
 
 
-    # x = x1
     u = u0
     for i in range(2, N):
         x = env._get_obs()
         if i % control_epoch_length == 0:
             u = policy(x)
-
-        # if i % dynamics_epoch_length == 0:
-            # dyn.update()
-
         xnew_actual = env.step(u)
         traj[i] = xnew_actual
         xnew_predicted = model_learner.predict(np.array([x[0], x[1], u]).reshape(1, -1))
@@ -244,7 +239,6 @@ if __name__ == "__main__":
         error_traj[i] = error
         model_learner.observe(X=np.array([x[0], x[1], u]).reshape(1, -1),
                                    y=np.array([xnew_actual[0], xnew_actual[1]]).reshape(1, -1))
-        # x = xnew_actual
 
     t1 = time.time()
     print(f"Elapsed time (s): {t1-t0}")
