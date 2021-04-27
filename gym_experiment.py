@@ -5,7 +5,7 @@ from collections import deque
 import pdb
 import time
 import argparse
-from adaptive_agents import NeuralModelLearner, AnalyticModelLearner
+from adaptive_agents import NeuralModelLearner, AnalyticModelLearner, PartialModelLearner
 import nonstationary_pendulum
 import gym
 
@@ -46,7 +46,7 @@ def setup_parser():
     parser.add_argument("drift_schedule", choices=["unsupervised", "supervised"], help="whether drift events are known")
     parser.add_argument("-num_dynamics_epochs", help="number of distinct dynamics", type=int, default=5)
     parser.add_argument("-num_control_epochs", help="number of distinct dynamics", type=int, default=500)
-    parser.add_argument("-learner", help="which type of learner", choices=["neural", "analytic"], default="neural")
+    parser.add_argument("-learner", help="which type of learner", choices=["neural", "analytic", "partial"], default="neural")
     parser.add_argument("--save", help="whether to display save prompt at end", action="store_true")
     parser.add_argument("-T", help="duration of experiment", type=float, default=5)
     parser.add_argument("-dt", help="time step of simulation", type=float, default=0.01)
@@ -88,6 +88,8 @@ if __name__ == "__main__":
         model_learner = AnalyticModelLearner(dt=dt, memory_size=10)
     if args.learner=="neural":
         model_learner = NeuralModelLearner(rate=rate)
+    if args.learner == "partial":
+        model_learner = PartialModelLearner(error_thresh=100, model_type=NeuralModelLearner, rate=rate)
 
 
 
@@ -100,7 +102,7 @@ if __name__ == "__main__":
     (x1, drifted), reward, done, info = env.step(u0)
     traj[1] = x1
 
-    model_learner.observe(X=np.array([*x0, u0]).reshape(1, -1),
+    model_learner.observe(X=np.array([*x0, *u0]).reshape(1, -1),
                               y=np.array([*x1]).reshape(1, -1),
                           drifted = None)
 

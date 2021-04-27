@@ -15,17 +15,60 @@ class ModelLearner(ABC):
     def predict(self,X):
         pass
 
+class PartialModelLearner(ModelLearner):
+    def __init__(self, error_thresh, model_type, **kwargs):
+        self.error_thresh = error_thresh
+        self.create_model = self.register(model_type, **kwargs)
+        self.model_ensemble = [self.create_model()]
+        self.model_errors = [0]
+        self.active_idx = 0
+        self.min_error = 0
+
+    def register(self, model_type, **kwargs):
+        def create_model():
+            print("TIME FOR A NEW MODEL")
+            return model_type(**kwargs)
+        return create_model
+
+    def observe(self, X, y, drifted):
+        errors = self.model_errors
+        ensemble = self.model_ensemble
+        active = self.active_idx
+
+
+        ensemble[active].observe(X, y, drifted) #we want this at the end but initialization problems
+
+        for model, curr_err in zip(ensemble, errors):
+            y_pred = model.predict(X)
+            error = np.mean([(y[0][i] - y_pred[i]) ** 2 for i in range(len(y[0]))])
+            curr_err += error
+
+        self.min_error = np.min(errors)
+        print(self.min_error)
+
+        if self.min_error > self.error_thresh:
+           ensemble.append(self.create_model())
+           errors.append(0)
+           self.min_error = 0
+
+        active = np.argmin(errors)
+
+    def predict(self, X):
+        return self.model_ensemble[self.active_idx].predict(X)
+
+
+
 
 class NeuralModelLearner(ModelLearner):
     def __init__(self, rate):
         self.learning_rate=rate
-        self.network = model_learner = MLPRegressor(random_state=1, learning_rate='constant', solver='sgd', learning_rate_init=rate, max_iter=500)
+        self.network = MLPRegressor(random_state=1, learning_rate='constant', solver='sgd', learning_rate_init=rate, max_iter=500)
         self.to_adapt = False
 
     def observe(self, X, y, drifted):
         if drifted != False:
             self.to_adapt = True
-            print("Time to adapt neural")
+            # print("Time to adapt neural")
             # self.network = model_learner = MLPRegressor(random_state=1, learning_rate='constant', solver='sgd', learning_rate_init=self.learning_rate, max_iter=500)
         self.network.partial_fit(X,y)
 
