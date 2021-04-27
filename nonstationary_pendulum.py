@@ -10,6 +10,7 @@ class NonstationaryPendulumEnv(gym.Env):
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second': 30
     }
+    fmap = ["cos(th)", "sin(th)", "theta_dot"]
 
     def __init__(self, drift_speed, drift_type, schedule, dt=0.05, m=1, l=1, b=0.5, g=10):
         self.max_speed = 8
@@ -86,7 +87,7 @@ class NonstationaryPendulumEnv(gym.Env):
 
     def _get_obs(self):
         theta, thetadot = self.state
-        return np.array([np.cos(theta), np.sin(theta), thetadot])
+        return np.array([np.cos(theta), np.sin(theta), thetadot]), self.drifted
 
     def update(self):
         self.b = next(self.schedule)

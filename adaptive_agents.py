@@ -30,8 +30,7 @@ class NeuralModelLearner(ModelLearner):
         self.network.partial_fit(X,y)
 
     def predict(self, X):
-        xnew_predicted = self.network.predict(X)
-        xnew_predicted = np.array((xnew_predicted[0, 0], xnew_predicted[0, 1]))
+        xnew_predicted = self.network.predict(X)[0]
         return xnew_predicted
 
 
