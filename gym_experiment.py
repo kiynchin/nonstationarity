@@ -48,8 +48,9 @@ def setup_parser():
     parser.add_argument("-num_control_epochs", help="number of distinct dynamics", type=int, default=500)
     parser.add_argument("-learner", help="which type of learner", choices=["neural", "analytic"], default="neural")
     parser.add_argument("--save", help="whether to display save prompt at end", action="store_true")
-    parser.add_argument("-T", help="duration of experiment", type=float, default=15)
+    parser.add_argument("-T", help="duration of experiment", type=float, default=5)
     parser.add_argument("-dt", help="time step of simulation", type=float, default=0.01)
+    parser.add_argument("--render", help="whether to show trajectory during experiment", action="store_true")
     return parser
 
 
@@ -63,6 +64,7 @@ if __name__ == "__main__":
     drift_schedule = args.drift_schedule
     T = args.T
     dt = args.dt
+    render = args.render
     num_control_epochs = args.num_control_epochs
     N = int(T/dt)
     control_epoch_length = int(N/num_control_epochs)
@@ -72,7 +74,7 @@ if __name__ == "__main__":
     gym.envs.register(
         id='NonstationaryPendulum-v0',
         entry_point = 'nonstationary_pendulum:NonstationaryPendulumEnv',
-        kwargs = {'drift_speed':1.0/dynamics_epoch_length, 'drift_type':drift_type, 'schedule':drift_schedule}
+        kwargs = {'dt':dt,'drift_speed':1.0/dynamics_epoch_length, 'drift_type':drift_type, 'schedule':drift_schedule}
     )
     env = gym.make('NonstationaryPendulum-v0')
 
@@ -106,8 +108,8 @@ if __name__ == "__main__":
     u = u0
     for i in range(2, N):
         x, drifted = env._get_obs()
-        if i % control_epoch_length == 0:
-            u = env.action_space.sample()
+        # if i % control_epoch_length == 0:
+        u = env.action_space.sample()
         (xnew_actual, drifted), reward, done, info = env.step(u)
         traj[i] = xnew_actual
         xnew_predicted = model_learner.predict(np.array([*x,*u]).reshape(1, -1))
@@ -117,12 +119,13 @@ if __name__ == "__main__":
         model_learner.observe(X=np.array([*x, *u]).reshape(1, -1),
                                    y=np.array([*xnew_actual]).reshape(1, -1),
                              drifted=drifted)
+        if(render):
+            env.render()
 
     t1 = time.time()
     print(f"Elapsed time (s): {t1-t0}")
     fig, axs = plt.subplots(D,2)
     fmap = env.fmap
-    breakpoint()
     for i in range(D):
         plot_comparison(i, fmap, [axs[i,0], axs[i,1]])
 

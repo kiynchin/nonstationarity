@@ -80,8 +80,9 @@ class NonstationaryPendulumEnv(gym.Env):
 
     def reset(self):
         self.steps_executed=0
-        high = np.array([np.pi, 1])
-        self.state = self.np_random.uniform(low=-high, high=high)
+        # high = np.array([np.pi, 1])
+        # self.state = self.np_random.uniform(low=-high, high=high)
+        self.state = [np.pi, self.np_random.uniform(low=-10, high=10)]
         self.last_u = None
         return self._get_obs()
 
