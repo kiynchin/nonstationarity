@@ -22,6 +22,7 @@ class NonstationaryPendulumEnv(gym.Env):
         self.b =b
         self.drifted = None
         self.viewer = None
+        self.drift_speed = drift_speed
         self.steps_executed = 0
 
         high = np.array([1., 1., self.max_speed], dtype=np.float32)
@@ -45,7 +46,7 @@ class NonstationaryPendulumEnv(gym.Env):
         if drift_type == "oscillating":
             self.drift_type = self.__class__.oscillating()
 
-        if schedule == "unsupervised":
+        if schedule == "blind":
             self.drift_check = self._unsupervised_check
         if schedule == "supervised":
             self.drift_check = self._pseudo_supervised_check
@@ -70,6 +71,9 @@ class NonstationaryPendulumEnv(gym.Env):
         self.last_u = u  # for rendering
         costs = angle_normalize(th) ** 2 + .1 * thdot ** 2 + .001 * (u ** 2)
 
+        if self.drift_check():
+            self.update()
+
         alpha = -b*thdot - 3*g/(2*l)*np.sin(th + np.pi) + 3./(m*l ** 2)*u
         newthdot = thdot + alpha * dt
         newth = th + newthdot * dt
@@ -91,7 +95,7 @@ class NonstationaryPendulumEnv(gym.Env):
         return np.array([np.cos(theta), np.sin(theta), thetadot]), self.drifted
 
     def update(self):
-        self.b = next(self.schedule)
+        self.b = next(self.drift_type)
 
     def asymptotic(init=1.5):
         max_b = 2
@@ -111,10 +115,13 @@ class NonstationaryPendulumEnv(gym.Env):
             yield value
 
     def _unsupervised_check(self):
-        return self.steps_executed*self.drift_speed >= 1
+        drift_trigger = self.steps_executed*self.drift_speed >= 1
+        if drift_trigger:
+            self.steps_executed = 0
+        return drift_trigger
 
     def _pseudo_supervised_check(self):
-        drift_trigger = self.steps_executed*self.drift_speed >= 1
+        drift_trigger = self._unsupervised_check()
         self.drifted = drift_trigger
         return drift_trigger
 

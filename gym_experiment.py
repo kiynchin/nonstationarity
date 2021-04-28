@@ -16,8 +16,10 @@ def plot_comparison(field, fmap,  axs):
     ax0 = axs[0]
     ax0.plot(np.linspace(0, T, N), traj[:,field], c='k')
     ax0.scatter(np.linspace(0, T, N), predicted_traj[:,field], c='b')
-    for i in range(1, num_dynamics_epochs):
-        ax0.axvline(T*i/num_dynamics_epochs)
+    # for i in range(1, num_dynamics_epochs):
+        # ax0.axvline(T*i/num_dynamics_epochs)
+    ax0.plot(np.linspace(0,T,N), drift_traj)
+    ax0.plot(np.linspace(0,T,N), adaptation_traj)
 
     ax0.set_xlabel("Time (s)")
     ax0.set_ylabel(fmap[field])
@@ -26,8 +28,8 @@ def plot_comparison(field, fmap,  axs):
 
     ax1 = axs[1]
     ax1.plot(np.linspace(0, T, N), np.abs(error_traj[:,field]), c='r')
-    for i in range(1, num_dynamics_epochs):
-        ax1.axvline(T*i/num_dynamics_epochs)
+    # for i in range(1, num_dynamics_epochs):
+    #     ax1.axvline(T*i/num_dynamics_epochs)
     ax1.set_xlabel("Time (s)")
     ax1.set_ylabel("Prediction Squared Error")
     ax1.set_title(f"Error in {fmap[field]} vs. Dynamics Changes")
@@ -43,7 +45,7 @@ def setup_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("-rate", help="learning rate for neural learner", type=float, default=0.01)
     parser.add_argument("drift_type", choices=["constant", "decaying", "oscillating", "supervised"], help="type of dynamics drift")
-    parser.add_argument("drift_schedule", choices=["unsupervised", "supervised"], help="whether drift events are known")
+    parser.add_argument("drift_schedule", choices=["blind", "supervised"], help="whether drift events are known")
     parser.add_argument("-num_dynamics_epochs", help="number of distinct dynamics", type=int, default=5)
     parser.add_argument("-num_control_epochs", help="number of distinct dynamics", type=int, default=500)
     parser.add_argument("-learner", help="which type of learner", choices=["neural", "analytic", "partial"], default="neural")
@@ -89,13 +91,15 @@ if __name__ == "__main__":
     if args.learner=="neural":
         model_learner = NeuralModelLearner(rate=rate)
     if args.learner == "partial":
-        model_learner = PartialModelLearner(error_thresh=100, model_type=NeuralModelLearner, rate=rate)
+        model_learner = PartialModelLearner(error_thresh=5, model_type=NeuralModelLearner, rate=rate)
 
 
 
     error_traj = np.empty((N,D))
     predicted_traj = np.empty((N,D))
     traj = np.empty((N,D))
+    adaptation_traj = np.empty((N,))
+    drift_traj = np.empty((N,))
     error_traj[0], error_traj[1] = (None, None)
     predicted_traj[0], predicted_traj[1] = (None, None)
     traj[0] = x0
@@ -113,16 +117,19 @@ if __name__ == "__main__":
         # if i % control_epoch_length == 0:
         u = env.action_space.sample()
         (xnew_actual, drifted), reward, done, info = env.step(u)
+        drift_traj[i] = drifted
         traj[i] = xnew_actual
         xnew_predicted = model_learner.predict(np.array([*x,*u]).reshape(1, -1))
         predicted_traj[i] = xnew_predicted
         error = loss(xnew_actual, xnew_predicted,D)
         error_traj[i] = error
-        model_learner.observe(X=np.array([*x, *u]).reshape(1, -1),
+        adapting = model_learner.observe(X=np.array([*x, *u]).reshape(1, -1),
                                    y=np.array([*xnew_actual]).reshape(1, -1),
                              drifted=drifted)
+        adaptation_traj[i] = adapting
         if(render):
             env.render()
+        print((drifted, adapting))
 
     t1 = time.time()
     print(f"Elapsed time (s): {t1-t0}")

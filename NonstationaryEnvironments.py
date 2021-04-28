@@ -41,8 +41,8 @@ class DriftScheduler:
         if drift_type == "oscillating":
             self.drift_type = dyn.__class__.oscillating()
 
-        if schedule == "unsupervised":
-            self.drift_check = self._unsupervised_check
+        if schedule == "blind":
+            self.drift_check = self._blind_check
         if schedule == "supervised":
             self.drift_check = self._pseudo_supervised_check
         # user_process.start()
@@ -59,7 +59,7 @@ class DriftScheduler:
     def _get_obs(self):
         return self.state, self.drifted
 
-    def _unsupervised_check(self):
+    def _blind_check(self):
         return self.steps_executed*self.drift_speed >= 1
 
     def _pseudo_supervised_check(self):

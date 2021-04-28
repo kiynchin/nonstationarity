@@ -4,6 +4,7 @@ from skopt import gp_minimize
 import sklearn.metrics as metrics
 import random
 import numpy as np
+from sklearn.exceptions import NotFittedError
 
 
 class ModelLearner(ABC):
@@ -30,28 +31,43 @@ class PartialModelLearner(ModelLearner):
             return model_type(**kwargs)
         return create_model
 
+
+
+    def update_model_errors(self, X, y):
+        errors = self.model_errors
+        ensemble = self.model_ensemble
+        sensitivity = 0.5
+
+        for i, (model, curr_err) in enumerate(zip(ensemble, errors)):
+            try:
+                y_pred = model.predict(X)
+                error = np.mean([(y[0][i] - y_pred[i]) ** 2 for i in range(len(y[0]))])
+                print((error, i))
+                errors[i] = errors[i] + sensitivity*(error - errors[i])
+            except NotFittedError:
+                print("Training new model")
+
+
     def observe(self, X, y, drifted):
+        adapted = False
         errors = self.model_errors
         ensemble = self.model_ensemble
         active = self.active_idx
 
-
-        ensemble[active].observe(X, y, drifted) #we want this at the end but initialization problems
-
-        for model, curr_err in zip(ensemble, errors):
-            y_pred = model.predict(X)
-            error = np.mean([(y[0][i] - y_pred[i]) ** 2 for i in range(len(y[0]))])
-            curr_err += error
-
+        self.update_model_errors(X, y)
         self.min_error = np.min(errors)
-        print(self.min_error)
 
-        if self.min_error > self.error_thresh:
+
+        adapted = self.min_error > self.error_thresh
+        if adapted:
            ensemble.append(self.create_model())
            errors.append(0)
            self.min_error = 0
 
         active = np.argmin(errors)
+        ensemble[active].observe(X, y, drifted)
+        print(active)
+        return adapted
 
     def predict(self, X):
         return self.model_ensemble[self.active_idx].predict(X)
@@ -68,8 +84,6 @@ class NeuralModelLearner(ModelLearner):
     def observe(self, X, y, drifted):
         if drifted != False:
             self.to_adapt = True
-            # print("Time to adapt neural")
-            # self.network = model_learner = MLPRegressor(random_state=1, learning_rate='constant', solver='sgd', learning_rate_init=self.learning_rate, max_iter=500)
         self.network.partial_fit(X,y)
 
     def predict(self, X):
