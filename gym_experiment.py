@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
-from collections import deque
 import pdb
 import time
 import argparse
@@ -14,12 +13,17 @@ import gym
 
 def plot_comparison(field, fmap,  axs):
     ax0 = axs[0]
-    ax0.plot(np.linspace(0, T, N), traj[:,field], c='k')
-    ax0.scatter(np.linspace(0, T, N), predicted_traj[:,field], c='b')
+    ax0.plot(np.linspace(0, T, N), traj[:,field], c='black', alpha=0.9)
+    ax0.plot(np.linspace(0, T, N), predicted_traj[:,field], c='blue', alpha=0.9)
     # for i in range(1, num_dynamics_epochs):
         # ax0.axvline(T*i/num_dynamics_epochs)
-    ax0.plot(np.linspace(0,T,N), drift_traj)
-    ax0.plot(np.linspace(0,T,N), adaptation_traj)
+    for i in range(N):
+        if drift_traj[i] == True:
+            ax0.axvline(i*T/N, ymin=0.3, ymax= 0.5, c='gray',alpha=0.5)
+        if adaptation_traj[i] == True:
+            ax0.axvline(i*T/N, ymin=0.5, ymax= 0.7,c='cornflowerblue', alpha=0.5)
+        # ax0.scatter(np.linspace(0,T,N), drift_traj)
+        # ax0.scatter(np.linspace(0,T,N), adaptation_traj)
 
     ax0.set_xlabel("Time (s)")
     ax0.set_ylabel(fmap[field])
@@ -30,23 +34,29 @@ def plot_comparison(field, fmap,  axs):
     ax1.plot(np.linspace(0, T, N), np.abs(error_traj[:,field]), c='r')
     # for i in range(1, num_dynamics_epochs):
     #     ax1.axvline(T*i/num_dynamics_epochs)
+    for i in range(N):
+        if drift_traj[i] == True:
+            ax1.axvline(i*T/N, ymin=0.3, ymax= 0.5, c='gray')
+        if adaptation_traj[i] == True:
+            ax1.axvline(i*T/N, ymin=0.5, ymax= 0.7,c='cornflowerblue')
     ax1.set_xlabel("Time (s)")
-    ax1.set_ylabel("Prediction Squared Error")
+    ax1.set_ylabel("Prediction RMSE (rad)")
     ax1.set_title(f"Error in {fmap[field]} vs. Dynamics Changes")
     ax1.legend(["Error", "Dynamics Shift"])
 
 
 def loss(xnew_actual, xnew_predicted, D):
-    error = np.array([(xnew_predicted[i]-xnew_actual[i])**2 for i in range(D)])
+    error = np.array([((xnew_predicted[i]-xnew_actual[i])**2)**0.5 for i in range(D)])
     return error
 
 
 def setup_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("-rate", help="learning rate for neural learner", type=float, default=0.01)
-    parser.add_argument("drift_type", choices=["constant", "decaying", "oscillating", "supervised"], help="type of dynamics drift")
+    parser.add_argument("drift_type", choices=["constant", "decaying", "oscillating", "supervised", "random"], help="type of dynamics drift")
     parser.add_argument("drift_schedule", choices=["blind", "supervised"], help="whether drift events are known")
-    parser.add_argument("-num_dynamics_epochs", help="number of distinct dynamics", type=int, default=5)
+    parser.add_argument("adaptation_strategy", choices=["detection", "supervision", "blind"])
+    parser.add_argument("-num_dynamics_epochs", help="number of distinct dynamics", type=int, default=9)
     parser.add_argument("-num_control_epochs", help="number of distinct dynamics", type=int, default=500)
     parser.add_argument("-learner", help="which type of learner", choices=["neural", "analytic", "partial"], default="neural")
     parser.add_argument("--save", help="whether to display save prompt at end", action="store_true")
@@ -64,6 +74,7 @@ if __name__ == "__main__":
     num_dynamics_epochs = args.num_dynamics_epochs
     drift_type = args.drift_type
     drift_schedule = args.drift_schedule
+    adaptation_strategy = args.adaptation_strategy
     T = args.T
     dt = args.dt
     render = args.render
@@ -91,7 +102,7 @@ if __name__ == "__main__":
     if args.learner=="neural":
         model_learner = NeuralModelLearner(rate=rate)
     if args.learner == "partial":
-        model_learner = PartialModelLearner(error_thresh=5, model_type=NeuralModelLearner, rate=rate)
+        model_learner = PartialModelLearner(error_thresh=1, memory_size=10, model_type=NeuralModelLearner, adaptation_strategy=adaptation_strategy, rate=rate)
 
 
 
@@ -129,9 +140,11 @@ if __name__ == "__main__":
         adaptation_traj[i] = adapting
         if(render):
             env.render()
-        print((drifted, adapting))
+
+
 
     t1 = time.time()
+    print(model_learner.status())
     print(f"Elapsed time (s): {t1-t0}")
     fig, axs = plt.subplots(D,2)
     fmap = env.fmap
