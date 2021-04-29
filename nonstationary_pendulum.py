@@ -3,6 +3,7 @@ from gym import spaces
 from gym.utils import seeding
 import numpy as np
 from os import path
+import random
 
 
 class NonstationaryPendulumEnv(gym.Env):
@@ -45,6 +46,9 @@ class NonstationaryPendulumEnv(gym.Env):
             self.drift_type = self.__class__.asymptotic()
         if drift_type == "oscillating":
             self.drift_type = self.__class__.oscillating()
+        if drift_type == "random":
+            self.drift_type = self.__class__.random()
+
 
         if schedule == "blind":
             self.drift_check = self._unsupervised_check
@@ -55,6 +59,8 @@ class NonstationaryPendulumEnv(gym.Env):
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
+
+
 
     def step(self, u):
         self.steps_executed += 1
@@ -86,7 +92,7 @@ class NonstationaryPendulumEnv(gym.Env):
         self.steps_executed=0
         # high = np.array([np.pi, 1])
         # self.state = self.np_random.uniform(low=-high, high=high)
-        self.state = [np.pi, self.np_random.uniform(low=-10, high=10)]
+        self.state = [0, self.np_random.uniform(low=1, high=2)]
         self.last_u = None
         return self._get_obs()
 
@@ -95,7 +101,7 @@ class NonstationaryPendulumEnv(gym.Env):
         return np.array([np.cos(theta), np.sin(theta), thetadot]), self.drifted
 
     def update(self):
-        self.b = next(self.drift_type)
+        self.g = 10*next(self.drift_type)
 
     def asymptotic(init=1.5):
         max_b = 2
@@ -109,6 +115,11 @@ class NonstationaryPendulumEnv(gym.Env):
         while True:
             for value in values:
                 yield value
+
+    def random():
+        while True:
+            value = random.uniform(0.1, 2)
+            yield value
 
     def constant(value=0.5):
         while True:
