@@ -32,7 +32,7 @@ class PendulumDynamics:
         g = self.g
         l = self.l
         b = self.b
-        alpha = u/(m*l**2) - (g/l)*np.sin(x[0])-b*x[1]
+        alpha = (3*u)/(m*l**2) - (3*g/2*l)*np.sin(x[0]+np.pi)-b*x[1]
         theta_new = x[0]+x[1]*self.dt
         theta_dot_new = x[1] + alpha*self.dt
         return np.array((theta_new, theta_dot_new))
