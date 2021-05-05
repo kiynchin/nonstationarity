@@ -11,7 +11,7 @@ import gym
 
 
 
-def plot_comparison(field, fmap,  axs):
+def plot_comparison(field, fmap,  axs, D):
     ax0 = axs[0]
     ax0.plot(np.linspace(0, T, N), traj[:,field], c='black', alpha=0.9)
     ax0.plot(np.linspace(0, T, N), predicted_traj[:,field], c='blue', alpha=0.9)
@@ -25,7 +25,8 @@ def plot_comparison(field, fmap,  axs):
         # ax0.scatter(np.linspace(0,T,N), drift_traj)
         # ax0.scatter(np.linspace(0,T,N), adaptation_traj)
 
-    ax0.set_xlabel("Time (s)")
+    if field == D-1:
+        ax0.set_xlabel("Time (s)")
     ax0.set_ylabel(fmap[field])
     ax0.legend(["Ground Truth", "Model Prediction"])
     ax0.set_title(f"Tracking performance of {fmap[field]}")
@@ -39,8 +40,9 @@ def plot_comparison(field, fmap,  axs):
             ax1.axvline(i*T/N, ymin=0.3, ymax= 0.5, c='gray')
         if adaptation_traj[i] == True:
             ax1.axvline(i*T/N, ymin=0.5, ymax= 0.7,c='cornflowerblue')
-    ax1.set_xlabel("Time (s)")
-    ax1.set_ylabel("Prediction RMSE (rad)")
+    if field == D-1:
+        ax1.set_xlabel("Time (s)")
+    ax1.set_ylabel("Prediction RMSE")
     ax1.set_title(f"Error in {fmap[field]} vs. Dynamics Changes")
     ax1.legend(["Error", "Dynamics Shift"])
 
@@ -55,7 +57,7 @@ def setup_parser():
     parser.add_argument("-rate", help="learning rate for neural learner", type=float, default=0.01)
     parser.add_argument("drift_type", choices=["constant", "decaying", "oscillating", "supervised", "random"], help="type of dynamics drift")
     parser.add_argument("drift_schedule", choices=["blind", "supervised"], help="whether drift events are known")
-    parser.add_argument("adaptation_strategy", choices=["detection", "supervision", "blind"])
+    parser.add_argument("adaptation_schedule", choices=["detection", "supervision", "blind"])
     parser.add_argument("-num_dynamics_epochs", help="number of distinct dynamics", type=int, default=9)
     parser.add_argument("-num_control_epochs", help="number of distinct dynamics", type=int, default=500)
     parser.add_argument("-learner", help="which type of learner", choices=["neural", "analytic", "partial"], default="neural")
@@ -63,6 +65,7 @@ def setup_parser():
     parser.add_argument("-T", help="duration of experiment", type=float, default=5)
     parser.add_argument("-dt", help="time step of simulation", type=float, default=0.01)
     parser.add_argument("--render", help="whether to show trajectory during experiment", action="store_true")
+    parser.add_argument("--fork", help="whether new partial models inherit the current model's params", action="store_true")
     return parser
 
 
@@ -74,10 +77,12 @@ if __name__ == "__main__":
     num_dynamics_epochs = args.num_dynamics_epochs
     drift_type = args.drift_type
     drift_schedule = args.drift_schedule
-    adaptation_strategy = args.adaptation_strategy
+    adaptation_schedule = args.adaptation_schedule
+    learner = args.learner
     T = args.T
     dt = args.dt
     render = args.render
+    fork = args.fork
     num_control_epochs = args.num_control_epochs
     N = int(T/dt)
     control_epoch_length = int(N/num_control_epochs)
@@ -87,7 +92,7 @@ if __name__ == "__main__":
     gym.envs.register(
         id='NonstationaryPendulum-v0',
         entry_point = 'nonstationary_pendulum:NonstationaryPendulumEnv',
-        kwargs = {'dt':dt,'drift_speed':1.0/dynamics_epoch_length, 'drift_type':drift_type, 'schedule':drift_schedule}
+        kwargs = {'dt':dt,'drift_speed':1.0/dynamics_epoch_length, 'drift_type':drift_type, 'drift_schedule':drift_schedule}
     )
     env = gym.make('NonstationaryPendulum-v0')
 
@@ -101,8 +106,8 @@ if __name__ == "__main__":
         model_learner = AnalyticModelLearner(dt=dt, memory_size=10)
     if args.learner=="neural":
         model_learner = NeuralModelLearner(rate=rate)
-    if args.learner == "partial":
-        model_learner = PartialModelLearner(error_thresh=1, memory_size=10, model_type=NeuralModelLearner, adaptation_strategy=adaptation_strategy, rate=rate)
+    if learner == "partial":
+        model_learner = PartialModelLearner(error_thresh=0.01, fork=fork, memory_size=10, model_type=NeuralModelLearner, adaptation_schedule=adaptation_schedule, rate=rate)
 
 
 
@@ -149,9 +154,9 @@ if __name__ == "__main__":
     fig, axs = plt.subplots(D,2)
     fmap = env.fmap
     for i in range(D):
-        plot_comparison(i, fmap, [axs[i,0], axs[i,1]])
+        plot_comparison(i, fmap, [axs[i,0], axs[i,1]], D)
 
-    fig.suptitle(f"Learner: {args.learner}, Dynamics Drift: {drift_type}, Learning rate {rate}, Dynamics Epochs: {num_dynamics_epochs}")
+    fig.suptitle(f"Learner: {args.learner}, Dynamics Drift: {drift_type}, Learning rate {rate}, Adaptation Schedule: {adaptation_schedule}")
     fig.set_size_inches(12, 12)
     plt.show()
     if args.save:
@@ -159,6 +164,6 @@ if __name__ == "__main__":
 
         if save != "n":
            leader = input("Enter leading filename (<Enter> for default):")
-           fig.savefig(f"dd{drift_type}lr{rate}de{num_dynamics_epochs}.png")
+           fig.savefig(f"figs/429/learner{learner}{fork}_as{adaptation_schedule}_lr{rate}_dd{drift_type}_{leader}.png")
 
     env.close()

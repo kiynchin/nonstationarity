@@ -13,7 +13,7 @@ class NonstationaryPendulumEnv(gym.Env):
     }
     fmap = ["cos(th)", "sin(th)", "theta_dot"]
 
-    def __init__(self, drift_speed, drift_type, schedule, dt=0.05, m=1, l=1, b=0.5, g=10):
+    def __init__(self, drift_speed, drift_type, drift_schedule, dt=0.05, m=1, l=1, b=0.5, g=10):
         self.max_speed = 8
         self.max_torque = 2.
         self.dt = dt
@@ -50,9 +50,9 @@ class NonstationaryPendulumEnv(gym.Env):
             self.drift_type = self.__class__.random()
 
 
-        if schedule == "blind":
+        if drift_schedule == "blind":
             self.drift_check = self._unsupervised_check
-        if schedule == "supervised":
+        if drift_schedule == "supervised":
             self.drift_check = self._pseudo_supervised_check
 
 
@@ -92,7 +92,8 @@ class NonstationaryPendulumEnv(gym.Env):
         self.steps_executed=0
         # high = np.array([np.pi, 1])
         # self.state = self.np_random.uniform(low=-high, high=high)
-        self.state = [0, self.np_random.uniform(low=1, high=2)]
+        # self.state = [0, self.np_random.uniform(low=1, high=2)]
+        self.state = [0,0.1]
         self.last_u = None
         return self._get_obs()
 
@@ -111,7 +112,7 @@ class NonstationaryPendulumEnv(gym.Env):
             value = 0.1*max_b+0.9*value
             yield value
 
-    def oscillating(values=[0, 1.5]):
+    def oscillating(values=[0.5, 1.5]):
         while True:
             for value in values:
                 yield value

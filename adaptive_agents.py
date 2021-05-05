@@ -21,9 +21,9 @@ class ModelLearner(ABC):
         pass
 
 class PartialModelLearner(ModelLearner):
-    def __init__(self, error_thresh, adaptation_strategy, memory_size, model_type, **kwargs):
-        self.adaptation_strategy = adaptation_strategy
-        self.fork = False
+    def __init__(self, fork, error_thresh, adaptation_schedule, memory_size, model_type, **kwargs):
+        self.adaptation_schedule = adaptation_schedule
+        self.fork = fork
         self.memory = deque(maxlen=memory_size)
         self.error_thresh = error_thresh
         self.create_model = self.register(model_type, **kwargs)
@@ -55,7 +55,7 @@ class PartialModelLearner(ModelLearner):
         ensemble = self.model_ensemble
         memory = self.memory
         D = len(np.squeeze(self.memory[0][1]))
-        sensitivity = 0.1
+        # sensitivity = 0.1
 
         try:
             for k, (model, curr_err) in enumerate(zip(ensemble, errors)):
@@ -68,7 +68,7 @@ class PartialModelLearner(ModelLearner):
                     # errors[k] = errors[k] + sensitivity*(error - errors[k])
                 errors[k] = metrics.mean_squared_error(y_true, y_pred)
         except NotFittedError:
-            self.adaptation_lockout = 0 # proxy for confidence normalization of the predictor
+            self.adaptation_lockout = 300 # proxy for confidence normalization of the predictor
             print("Training new model")
 
     def status(self):
@@ -79,6 +79,7 @@ class PartialModelLearner(ModelLearner):
     def observe(self, X, y, drifted):
         self.memory.append((X,y))
         adapting = False
+        self.adaptation_lockout = max(self.adaptation_lockout-1, 0)
         errors = self.model_errors
         ensemble = self.model_ensemble
         # active = self.active_idx
@@ -90,13 +91,13 @@ class PartialModelLearner(ModelLearner):
         no_good_model = self.min_error > self.error_thresh
         strategies = {
             "detection": no_good_model and not self.adaptation_lockout,
-            "supervision": drifted,
+            "supervision": drifted and not self.adaptation_lockout,
             "blind": False
                      }
 
 
-        # print(errors)
-        need_new_model = strategies[self.adaptation_strategy]
+        print(errors)
+        need_new_model = strategies[self.adaptation_schedule]
 
         # if (no_good_model or active_model_is_not_best) and not self.adaptation_lockout:
         #     print((no_good_model, active_model_is_not_best))
@@ -106,11 +107,10 @@ class PartialModelLearner(ModelLearner):
            self.model_ensemble.append(self.create_model())
            errors.append(0)
            self.min_error = 0
-           self.adaptation_lockout = max(self.adaptation_lockout-1, 0)
 
         best_model = np.argmin(errors)
-        have_better_model = (best_model != self.active_idx)
-        adapting =  have_better_model
+        have_better_model = (best_model != self.active_idx) and not self.adaptation_lockout
+        adapting =  need_new_model and have_better_model
 
 
         if adapting:
