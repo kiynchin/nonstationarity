@@ -140,6 +140,9 @@ class NeuralModelLearner(ModelLearner):
         xnew_predicted = self.network.predict(X)[0]
         return xnew_predicted
 
+    def status(self):
+        return self.network
+
 
 
 class AnalyticModelLearner(ModelLearner):
