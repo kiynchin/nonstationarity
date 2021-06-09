@@ -1,3 +1,4 @@
 figs/
 __pycache__/
 .vscode/
+*test*.py
