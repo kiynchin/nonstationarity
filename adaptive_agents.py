@@ -123,6 +123,20 @@ class PartialModelLearner(ModelLearner):
         return self.model_ensemble[self.active_idx].predict(X)
 
 
+class MemoryModelLearner(ModelLearner):
+    def __init__(self, Dx, Dy, existing_memory = []):
+        self.Dx = Dx
+        self.Dy = Dy
+        self.memory = existing_memory
+
+    def observe(self, X, y, drifted):
+        self.memory.append(np.concatenate((X, y), axis=1))
+
+    def predict(self, X):
+        return np.zeros((self.Dy))
+
+    def status(self):
+        return len(self.memory)
 
 
 class NeuralModelLearner(ModelLearner):

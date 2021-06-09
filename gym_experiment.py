@@ -4,7 +4,7 @@ import sys
 import pdb
 import time
 import argparse
-from adaptive_agents import NeuralModelLearner, AnalyticModelLearner, PartialModelLearner
+from adaptive_agents import NeuralModelLearner, AnalyticModelLearner, PartialModelLearner, MemoryModelLearner
 import nonstationary_pendulum
 import gym
 
@@ -60,7 +60,7 @@ def setup_parser():
     parser.add_argument("adaptation_schedule", choices=["detection", "supervision", "blind"])
     parser.add_argument("-num_dynamics_epochs", help="number of distinct dynamics", type=int, default=9)
     parser.add_argument("-num_control_epochs", help="number of distinct dynamics", type=int, default=500)
-    parser.add_argument("-learner", help="which type of learner", choices=["neural", "analytic", "partial"], default="neural")
+    parser.add_argument("-learner", help="which type of learner", choices=["neural", "analytic", "partial","memory"], default="neural")
     parser.add_argument("--save", help="whether to display save prompt at end", action="store_true")
     parser.add_argument("-T", help="duration of experiment", type=float, default=5)
     parser.add_argument("-dt", help="time step of simulation", type=float, default=0.01)
@@ -72,6 +72,7 @@ def setup_parser():
 
 
 if __name__ == "__main__":
+    #Experimental parameters
     args = setup_parser().parse_args()
     rate = args.rate
     num_dynamics_epochs = args.num_dynamics_epochs
@@ -89,6 +90,7 @@ if __name__ == "__main__":
     dynamics_epoch_length = int(N/num_dynamics_epochs)
 
 
+    ## Experimental dynamics environment
     gym.envs.register(
         id='NonstationaryPendulum-v0',
         entry_point = 'nonstationary_pendulum:NonstationaryPendulumEnv',
@@ -99,6 +101,8 @@ if __name__ == "__main__":
     x0,_ = env.reset()
     u0 = env.action_space.sample()
     D = env.observation_space.shape[0]
+    Du = env.action_space.shape[0]
+    print(Du)
 
 
     t0 = time.time()
@@ -108,6 +112,10 @@ if __name__ == "__main__":
         model_learner = NeuralModelLearner(rate=rate)
     if learner == "partial":
         model_learner = PartialModelLearner(error_thresh=0.01, fork=fork, memory_size=10, model_type=NeuralModelLearner, adaptation_schedule=adaptation_schedule, rate=rate)
+    if learner == "memory":
+        model_learner = MemoryModelLearner(Dx=D+Du, Dy = D)
+
+
 
 
 
@@ -137,6 +145,7 @@ if __name__ == "__main__":
         traj[i] = xnew_actual
         xnew_predicted = model_learner.predict(np.array([*x,*u]).reshape(1, -1))
         predicted_traj[i] = xnew_predicted
+        # print((xnew_actual, xnew_predicted))
         error = loss(xnew_actual, xnew_predicted,D)
         error_traj[i] = error
         adapting = model_learner.observe(X=np.array([*x, *u]).reshape(1, -1),
