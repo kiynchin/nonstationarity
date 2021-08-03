@@ -43,7 +43,7 @@ def setup_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("-rate", help="learning rate for neural learner", type=float, default=0.01)
     parser.add_argument("drift_type", choices=["constant", "decaying", "oscillating", "supervised"], help="type of dynamics drift")
-    parser.add_argument("drift_schedule", choices=["unsupervised", "supervised"], help="whether drift events are known")
+    parser.add_argument("drift_schedule", choices=["blind", "supervised"], help="whether drift events are known")
     parser.add_argument("-num_dynamics_epochs", help="number of distinct dynamics", type=int, default=5)
     parser.add_argument("-num_control_epochs", help="number of distinct dynamics", type=int, default=500)
     parser.add_argument("-learner", help="which type of learner", choices=["neural", "analytic"], default="neural")
